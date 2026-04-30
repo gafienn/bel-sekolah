@@ -1,0 +1,56 @@
+<?php require_once 'config.php'; ?>
+<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Bel Sekolah</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&display=swap" rel="stylesheet">
+<style>:root{--bg:#0f172a;--card:#1e293b;--accent:#3b82f6}body{font-family:'Space Grotesk',sans-serif;background:var(--bg);color:#f1f5f9;margin:0;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden}
+.header{position:absolute;top:20px;display:flex;align-items:center;gap:15px}.logo{width:60px;height:60px;border-radius:50%;background:#334155;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.logo img{width:100%;height:100%;object-fit:cover}.school-info h1{margin:0;font-size:1.5rem}.school-info p{margin:0;opacity:0.7;font-size:0.9rem}
+.clock-container{text-align:center;z-index:10}.time{font-size:8rem;font-weight:700;line-height:1;background:linear-gradient(to right,#60a5fa,#818cf8);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.date{font-size:2rem;opacity:0.8;margin-bottom:20px}
+.next-up{background:rgba(30,41,59,0.8);backdrop-filter:blur(10px);padding:20px 40px;border-radius:1rem;border:1px solid #334155;margin-top:20px;text-align:center}
+.next-label{font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;color:#60a5fa}.next-name{font-size:1.5rem;font-weight:bold;margin-top:5px}.next-time{font-size:1rem;opacity:0.7}
+.ringing{animation:shake 0.5s infinite}@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
+.admin-btn{position:absolute;bottom:20px;right:20px;background:#334155;padding:10px 20px;border-radius:5px;color:#94a3b8;text-decoration:none;font-size:12px}
+.overlay{position:fixed;inset:0;background:rgba(59,130,246,0.1);pointer-events:none;opacity:0;transition:opacity 0.3s}.overlay.active{opacity:1}</style></head>
+<body><div id="overlay" class="overlay"></div>
+<div class="header"><div class="logo" id="logoContainer"></div><div class="school-info"><h1 id="schoolName">Loading...</h1><p id="schoolAddress">Loading...</p></div></div>
+<div class="clock-container"><div class="date" id="dateDisplay">-</div><div class="time" id="timeDisplay">00:00:00</div>
+<div class="next-up"><div class="next-label">Jadwal Selanjutnya</div><div class="next-name" id="nextName">-</div><div class="next-time" id="nextTime">--:--</div></div></div>
+<a href="login.php" class="admin-btn">Admin Panel</a><audio id="bellAudio"></audio>
+<script>
+let schedules=[],sounds=[],settings={},lastRungMinute=-1;
+async function getData(){
+ let s=await fetch('api.php?action=settings').then(r=>r.json());
+ let d=await fetch('api.php?action=schedules').then(r=>r.json());
+ let u=await fetch('api.php?action=sounds').then(r=>r.json());
+ settings=s; schedules=d; sounds=u;
+ document.getElementById('schoolName').innerText=settings.school_name;
+ document.getElementById('schoolAddress').innerText=settings.school_address;
+ if(settings.logo_path) document.getElementById('logoContainer').innerHTML=`<img src="${settings.logo_path}" alt="Logo">`;
+}
+function updateClock(){
+ const now=new Date(),h=String(now.getHours()).padStart(2,'0'),m=String(now.getMinutes()).padStart(2,'0'),s=String(now.getSeconds()).padStart(2,'0'),day=now.getDay();
+ const daysName=['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+ document.getElementById('timeDisplay').innerText=`${h}:${m}:${s}`;
+ document.getElementById('dateDisplay').innerText=`${daysName[day]}, ${now.getDate()} ${['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'][now.getMonth()]} ${now.getFullYear()}`;
+ const currentTime=`${h}:${m}`,timeKey=`${h}:${m}-${day}`;
+ if(settings.system_active==1){
+  const match=schedules.find(s=>s.time===currentTime && s.days.includes(day));
+  if(match && lastRungMinute!==timeKey){ringBell(match); lastRungMinute=timeKey;}
+ }
+ updateNextSchedule(now);
+}
+function updateNextSchedule(now){
+ const day=now.getDay(),currentTime=`${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+ const upcoming=schedules.filter(s=>s.days.includes(day) && s.time>currentTime).sort((a,b)=>a.time.localeCompare(b.time))[0];
+ if(upcoming){document.getElementById('nextName').innerText=upcoming.name; document.getElementById('nextTime').innerText=upcoming.time;}
+ else {document.getElementById('nextName').innerText="Selesai"; document.getElementById('nextTime').innerText="-";}
+}
+function ringBell(schedule){
+ document.body.classList.add('ringing'); document.getElementById('overlay').classList.add('active');
+ setTimeout(()=>{document.body.classList.remove('ringing'); document.getElementById('overlay').classList.remove('active');},4000);
+ const audio=document.getElementById('bellAudio'),soundObj=sounds.find(s=>s.id===schedule.sound_id);
+ if(soundObj && soundObj.file_path!=='default'){audio.src=soundObj.file_path; audio.play();}
+ else{try{const ctx=new(window.AudioContext||window.webkitAudioContext)();const o=ctx.createOscillator();const g=ctx.createGain();o.connect(g);g.connect(ctx.destination);o.frequency.value=880;o.type="sine";g.gain.setValueAtTime(0.5,ctx.currentTime);g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+1.5);o.start();o.stop(ctx.currentTime+1.5);}catch(e){}}
+}
+getData(); setInterval(updateClock,1000);
+</script></body></html>
